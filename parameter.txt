@@ -1,0 +1,8 @@
+8700 # Aussentemperatur
+8510 # Kollektortemperatur
+8980 # Pufferspeichertemperatur
+8830 # Trinkwassertemperatur 1
+8832 # Trinkwassertemperatur 2
+7750 # Trinkwassertemperatur B3
+7820 # Temp BX1
+8499 # Kollektorpumpe
