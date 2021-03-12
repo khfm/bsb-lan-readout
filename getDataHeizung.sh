@@ -56,7 +56,7 @@
 # IP of arduino
 ARDUINO="192.168.2.88"
 # path to parameter, data and temp file
-PARAMFILE="parameter.dat"
+PARAMFILE="parameter.txt"
 DATAFILE="heizung.dat";
 TMPFILE="data.tmp";
 # rewrite flag for data file
@@ -72,7 +72,7 @@ usage()
   echo " Available Options:";
   echo " -a <nnn.nnn.nnn.nnn> : ip of arduino [192.168.2.88]";
   echo " -d <path> : path to data file [heizung.dat]";
-  echo " -p <path> : path to parameter file [parameter.dat]";
+  echo " -p <path> : path to parameter file [parameter.txt]";
   echo " -r: rewrite existing data file [append data to data file]";
   echo " -h: print help";
   echo " -H: print history of script";
