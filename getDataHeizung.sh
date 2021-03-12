@@ -6,6 +6,8 @@
 #############################################################
 #
 #  2021-02-16-1.0: created.
+#  2021-03-06-1.1: changed to JSON format.
+#                  output format changed.
 #
 #############################################################
 #
@@ -23,14 +25,15 @@
 #
 #   Format of data file 'heizung.dat':
 #   YYYYMMDD HHMMSS day_of_year parameter "parameter_text" value unit
-#   Delimiter is 'tab'
+#   Delimiter is ','
 #
 # EXAMPLE
 #   getDataHeizung.sh [-apHn]
 #
 # OPTIONS
 #   -a <nnn.nnn.nnn.nnn> : specifies IP of arduino [192.168.2.88].
-#   -p <path>            : path to parameter and data file [.]
+#   -d <path>            : path to data file [heizung.dat]
+#   -p <path>            : path to parameter file [parameter.dat]
 #   -H                   : print history of script.
 #   -h                   : print help.
 #
@@ -38,7 +41,7 @@
 #   The program does not use any environment variables.
 #
 # REQUIRE
-#   bash, date, sed, wc, wget, grep
+#   bash, date, sed, awk, wc, wget, cat, echo
 #
 # BUGS
 #   No known bugs.
@@ -52,84 +55,152 @@
 #-------------------  global variables  ---------------------
 # IP of arduino
 ARDUINO="192.168.2.88"
-# path to parameter and data file
-DIR="."
+# path to parameter, data and temp file
+PARAMFILE="parameter.txt"
+DATAFILE="heizung.dat";
+TMPFILE="data.tmp";
+# rewrite flag for data file
+REWRITE=false;
 
 #-------------------  functions -----------------------------
 #-------------------  get command line options --------------
 usage()
 {
   echo "";
-  echo " getDataHeizung.sh [-a]"
-  echo " This bash-script reads parameters from BSB-LAN-arduino."
-  echo " Available Options:"
-  echo " -a <nnn.nnn.nnn.nnn> : ip of arduino [192.168.2.88]"
-  echo " -p <path> : path to parameter and data file [.]"
-  echo " -h: print help"
-  echo " -H: print history of script"
+  echo " getDataHeizung.sh [-adprhH]";
+  echo " This bash-script reads parameters from BSB-LAN-arduino.";
+  echo " Available Options:";
+  echo " -a <nnn.nnn.nnn.nnn> : ip of arduino [192.168.2.88]";
+  echo " -d <path> : path to data file [heizung.dat]";
+  echo " -p <path> : path to parameter file [parameter.txt]";
+  echo " -r: rewrite existing data file [append data to data file]";
+  echo " -h: print help";
+  echo " -H: print history of script";
   exit 0;
 }
 
-history()
+phistory()
 {
   echo "";
   echo " getDataHeizung.sh[History]:";
-  echo " 2021-02-16-kh: created."
+  echo " 2021-02-16-kh: created.";
+  echo " 2021-03-06-kh: uses now JSON format for data transfer.";
+  echo "                output format: all parameters now in one line.";
+  echo "                               new delimiter ','.";
   exit 0;
 }
 
-#-------------------------   main  ---------------------------
+options()
 # get options from commandline
-optstring="hHa:p:"
-while getopts "$optstring" arg; do
+{
+  optstring="hHra:p:d:"
+  while getopts "$optstring" arg $OPTS; do
     case "${arg}" in
 	a)  ARDUINO=${OPTARG}
 	    ;;
-	p)  DIR=${OPTARG}
+	d)  DATAFILE=${OPTARG}
+	    ;;
+	p)  PARAMFILE=${OPTARG}
+	    ;;
+	r)  REWRITE=true;
 	    ;;
 	h)  usage
             ;;
-	H)  history
+	H)  phistory
 	    exit 1
             ;;
 	?)  usage        # undeclared option found
 	exit 1
 	;;
     esac
-done
+  done
+  # check if path to parameter file and data file are valid
+  test -f $PARAMFILE || { echo "ERROR [getDataHeizung.sh]: parameter file '$PARAMFILE' does not exist, aborted."; exit; }
+  touch $DATAFILE 2>/dev/null 1>&2
+  test -f $DATAFILE  || { echo "ERROR [getDataHeizung.sh]: no valid path to data file '$DATAFILE', aborted."; exit; } 
+  return;
+}
 
-# get date & time
-# add blank between date and time
-DATE0=`date +%Y%m%d_%H%M%S`;
-DATE0=$(sed "s/_/ /" <<< $DATE0);
+
+#-------------------------   main  ---------------------------
+
+# get options from commandline
+OPTS=$@;
+options;
+
+# get date
+DATE0=`date +%Y%m%d`;
 
 # compute day of year"
 DOY=`date +%j`;
 HOUR=`date +%H`;
 MIN=`date +%M`;
-DATE=`bc <<<"scale=4;$DOY+$HOUR/24+$MIN/3600"`;
+SEC=`date +%S`;
+DATE=`bc <<<"scale=5;$DOY+$HOUR/24+$MIN/1440+$SEC/86400"`;
 
 # get parameters from file "parameter.txt",
 # write to format "par1/par2/par3/..."
-#  - remove comments
+#  - remove comments, discard empty lines
 #  - assign to var READPAR0, one parameter per line
-READPAR0=`sed 's/\([0-9]*\).*/\1/' $DIR/parameter.txt`;
+READPAR0=`sed 's/^\([0-9]*\).*/\1/; /^ *$/d; ' $PARAMFILE`;
 
-#  - read multiples lines,
-#  - replace CR at each EOL by "/"
+#  - read multiples lines, discard empty lines
+#  - replace CR at each EOL by ","
 #  - assign to var READPAR
 #    - determine number of parameter in parameter.txt
 #    - construct var ANZN which gives number of lines for sed
-NN=`wc -l $DIR/parameter.txt | sed "s/ .*//"`;
+#      NN = number of lines in parameter.txt
+NN=`cat $PARAMFILE | sed '/^#/d; /^$/d' | wc -l`;
 i=1; while [ $i -lt $NN ]; do ANZN=$ANZN"N;" && i=$[$i+1]; done
-#    - replace ANZN CRs with "/"
-READPAR=$(sed "$ANZN; s/\n/\//g" <<< $READPAR0);
+#    - replace ANZN CRs with ","
+READPAR=$(sed "$ANZN; s/\n/,/g" <<< $READPAR0);
 
+# reset temp file
 # read parameters from heizung
-# remove html code
-# add time stamp, add separator "tab"
+# distinguish "name" from "dataType_name"
+# set field seperator to "+"
+# get parameter field, name, value and unit, write to temp file
+rm -rf $TMPFILE;
+wget -qO- http://$ARDUINO/JQ=$READPAR | sed 's/\"name/\"xname/g; s/\"/+/g' | awk '
+BEGIN { ii=1; FS= "+" }
+{ if ( $2 ~ /[0-9][0-9][0-9][0-9]/ ) {
+      a[ii]=$2;
+      ii++; }
+  else {
+      if ( $2 ~ /.*xname.*/ ) {
+          a[ii]=$4;
+          ii++; }
+      else
+          if ( $2 ~ /.*+value.*/ ) {
+              a[ii]=$4;
+              ii++; }
+          else
+              if ( $2 ~ /.*+unit.*/ ) {
+                  if ( $4 ~ /^$/ ) a[ii]="0"; 
+                  else a[ii]=$4;
+                  ii++; }
+  }
+}
+END {
+    for (i=1; i<ii; i++) {
+        printf ("%s\n", a[i]) > TMPFILE
+    }
+}' TMPFILE=$TMPFILE
+
+# read parameters from temp file
+# discard empty lines
+# replace CR by ','
+# add time stamp
 # write to data file
-# use of quotes: " inserts content of vars e.g. $DATE
-#                ' does not interpret "$"
-wget -qO- http://$ARDUINO/$READPAR | grep "$READPAR0" | sed 's/<\/td><td><.*// ; s/<tr><td>\(.*\)/\1/ ; s/\([0-9][0-9][0-9][0-9]\) \(.*\): \(.*\)/'"$DATE0"'\t'"$DATE"' \1\t\"\2\"\t\3/' >>$DIR/heizung.dat
+READPAR20=`sed 's/\(.*\)/\1/;' $TMPFILE`;
+NN=`cat $TMPFILE | sed "/^$/d" | wc -l`;
+i=1; while [ $i -lt $NN ]; do ANZ=$ANZ"N;" && i=$[$i+1]; done
+#    - replace ANZ CRs with ","
+DATA=$(sed "$ANZ; s/\n/,/g" <<< $READPAR20);
+if $REWRITE
+then
+    rm -rf $DATAFILE;
+fi;
+echo "$DATE0,$DATE,$DATA" >>$DATAFILE;
+rm -rf $TMPFILE;
 

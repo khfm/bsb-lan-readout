@@ -22,3 +22,15 @@ For help see:
    plotdata.sh -h
 
 20210216-1.0, K.H.Mantel, mantel@lmu.de
+
+'getDataHeizung.sh': Now the JSON-format is used for readout, new
+data format for improved plots.
+
+'parameter.txt' now supports comments and empty lines.
+
+'heizung.dat': format of the data has changed in order to support
+simultaneous plots of different parameters.
+
+'plotdata.sh' now supports time constraints for plots, improved help menue.
+
+20210312-1.1 K.H. Mantel, mantel@lmu.de
